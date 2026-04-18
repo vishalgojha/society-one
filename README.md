@@ -43,3 +43,10 @@ npm run build
 - Client-side visitor export now happens through `src/api/functions.js`.
 - The PWA manifest and icons live in `public/`.
 - Role checks are implemented in `src/lib/rbac.js` and `src/components/RequireRole.jsx`.
+- The local AI bridge lives in `server/index.mjs`.
+- Default task routing uses local Ollama models:
+  - `qwen3:8b`: security checks, reports, default reasoning
+  - `llava-phi3:latest`: ID image OCR / vision
+  - `qwen2.5:3b`: structured extraction and classification
+  - `qwen2.5:0.5b`: short notifications
+  - `llama3.2:1b`: lightweight quick tasks / fallback
