@@ -42,10 +42,41 @@ export default function CheckIn() {
     queryFn: () => entities.Property.list('-createdAt', 100),
   });
 
+  const { data: notificationSettings } = useQuery({
+    queryKey: ['checkin-notification-settings', operator?.id],
+    enabled: Boolean(operator?.id),
+    queryFn: async () => {
+      const [settings] = await entities.NotificationSettings.filter({ operatorId: operator.id });
+      return settings || null;
+    },
+  });
+
   const selectedProperty = useMemo(
     () => properties.find((property) => property.id === form.propertyId) || null,
     [properties, form.propertyId]
   );
+
+  const notificationsEnabled = Boolean(notificationSettings?.whatsappEnabled);
+  const residentCanBeNotified = Boolean(selectedProperty?.residentPhone && notificationsEnabled);
+  const visitorCanBeNotified = Boolean(form.verification?.isPreApproved && form.visitorMobile && notificationsEnabled);
+  const notificationSummary = (() => {
+    if (!notificationsEnabled) {
+      return 'WhatsApp notifications are off for your operator account. This check-in will be saved without sending alerts.';
+    }
+    if (!selectedProperty?.residentPhone) {
+      return 'Resident phone is not configured for this property yet. Save the property phone in Admin or Setup to enable resident alerts.';
+    }
+    if (form.verification?.isPreApproved && !form.visitorMobile) {
+      return 'Resident will be notified, but the pre-approved visitor will not receive a message until a mobile number is captured.';
+    }
+    if (form.verification?.isPreApproved && residentCanBeNotified && visitorCanBeNotified) {
+      return 'Resident and pre-approved visitor will both receive WhatsApp updates after confirmation.';
+    }
+    if (residentCanBeNotified) {
+      return 'Resident will receive a WhatsApp alert after confirmation.';
+    }
+    return 'This check-in will be saved after confirmation.';
+  })();
 
   const notifyRecipients = async () => {
     if (!operator?.id) return;
@@ -300,6 +331,18 @@ export default function CheckIn() {
                     {form.verification.securityFlags.join(' • ')}
                   </div>
                 )}
+              </div>
+              <div className="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+                <p className="text-sm font-medium text-white">Notification status</p>
+                <p className="mt-2 text-sm text-slate-400">{notificationSummary}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Badge className={residentCanBeNotified ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-300'}>
+                    Resident alert {residentCanBeNotified ? 'ready' : 'not ready'}
+                  </Badge>
+                  <Badge className={visitorCanBeNotified ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-300'}>
+                    Visitor alert {visitorCanBeNotified ? 'ready' : 'not ready'}
+                  </Badge>
+                </div>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button variant="outline" onClick={() => setStep(2)} className="h-14 rounded-2xl border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-900">Edit details</Button>

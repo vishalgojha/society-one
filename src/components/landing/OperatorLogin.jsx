@@ -5,10 +5,28 @@ import { Loader2, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 
+function getLoginCopy() {
+  if (typeof window === 'undefined') {
+    return {
+      cta: 'Send operator magic link',
+      helper: 'Access is provisioned per society. Ask an admin to create your operator profile first.',
+    };
+  }
+
+  const { hostname, host } = window.location;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  return {
+    cta: isLocalhost ? 'Send magic link to this device' : 'Send operator magic link',
+    helper: `Access is provisioned per society. Ask an admin to create your operator profile first. Your next sign-in link will open on ${isLocalhost ? host : 'societyone.live'}.`,
+  };
+}
+
 export default function OperatorLogin() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+  const loginCopy = getLoginCopy();
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -49,13 +67,13 @@ export default function OperatorLogin() {
           ) : (
             <>
               <LogIn className="mr-2 h-5 w-5" />
-              Send magic link
+              {loginCopy.cta}
             </>
           )}
         </Button>
       </form>
       <p className="text-center text-xs text-slate-500">
-        Access is provisioned per society. Ask an admin to create your operator profile first.
+        {loginCopy.helper}
       </p>
     </div>
   );

@@ -20,6 +20,23 @@ function getAiBaseUrl() {
   return `${window.location.protocol}//${window.location.host}`;
 }
 
+function getEnvironmentCopy() {
+  if (typeof window === 'undefined') {
+    return {
+      environmentLabel: 'production',
+      loginHost: 'societyone.live',
+    };
+  }
+
+  const { hostname, host } = window.location;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  return {
+    environmentLabel: isLocalhost ? 'local preview' : 'production',
+    loginHost: isLocalhost ? host : 'societyone.live',
+  };
+}
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const { operator, societyId } = useAuth();
@@ -27,6 +44,7 @@ export default function Settings() {
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState('SocietyOne WhatsApp transport test');
   const aiBaseUrl = getAiBaseUrl();
+  const environmentCopy = getEnvironmentCopy();
 
   useQuery({
     queryKey: ['notification-settings', operator?.id],
@@ -141,6 +159,24 @@ export default function Settings() {
     },
   });
 
+  const whatsappStatusText = (() => {
+    if (!whatsappStatus?.status) return 'Checking the live transport status.';
+    if (whatsappStatus.status === 'connected') {
+      return `Connected and ready to send resident alerts${whatsappStatus.connectedJid ? ` from ${whatsappStatus.connectedJid}` : ''}.`;
+    }
+    if (whatsappStatus.status === 'pairing') {
+      return 'Scan the QR with the society WhatsApp account to complete pairing.';
+    }
+    if (whatsappStatus.status === 'connecting') {
+      return 'Starting a fresh WhatsApp session now.';
+    }
+    return 'Transport is offline. Start pairing again to restore delivery.';
+  })();
+
+  const whatsappBannerText = form.whatsappEnabled
+    ? 'Resident and pre-approved visitor alerts will use the live WhatsApp bridge when the transport is connected.'
+    : 'WhatsApp delivery is disabled for this operator. Check-ins will save normally without sending alerts.';
+
   return (
     <div className="grid max-w-5xl gap-6 xl:grid-cols-[0.95fr_1.05fr]">
       <Card className="rounded-3xl border-slate-800 bg-slate-900/80">
@@ -149,7 +185,7 @@ export default function Settings() {
           <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <div>
               <p className="font-medium text-white">WhatsApp alerts</p>
-              <p className="text-sm text-slate-500">Baileys transport is now available through the server bridge.</p>
+              <p className="text-sm text-slate-500">{whatsappBannerText}</p>
             </div>
             <Switch checked={form.whatsappEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, whatsappEnabled: checked }))} />
           </div>
@@ -175,14 +211,15 @@ export default function Settings() {
             </Badge>
           </div>
           <p className="text-sm text-slate-500">
-            Live model routing from the Hetzner Ollama bridge.
+            Live model routing from the Hetzner Ollama bridge for the {environmentCopy.environmentLabel} app.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <p className="text-sm font-medium text-white">Bridge endpoint</p>
             <p className="mt-1 break-all text-sm text-slate-400">{aiBaseUrl}</p>
-            <p className="mt-3 text-xs text-slate-500">Ollama: {aiHealth?.ollama || 'loading...'}</p>
+            <p className="mt-3 text-xs text-slate-500">Operator sign-ins should return to {environmentCopy.loginHost}.</p>
+            <p className="mt-1 text-xs text-slate-500">Ollama: {aiHealth?.ollama || 'loading...'}</p>
           </div>
 
           <div className="space-y-3">
@@ -214,7 +251,7 @@ export default function Settings() {
             </Badge>
           </div>
           <p className="text-sm text-slate-500">
-            Pair a WhatsApp session with Baileys, then send a test message through the live bridge.
+            {whatsappStatusText}
           </p>
         </CardHeader>
         <CardContent className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
@@ -249,7 +286,9 @@ export default function Settings() {
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-500">
-                No QR currently available. Start pairing to generate one.
+                {whatsappStatus?.status === 'connected'
+                  ? 'This session is already connected. Disconnect it if you need a fresh QR.'
+                  : 'No QR currently available. Start pairing to generate one.'}
               </div>
             )}
           </div>
@@ -275,7 +314,7 @@ export default function Settings() {
               Send test WhatsApp
             </Button>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
-              Use full international format without `+`. Example: `9198...`.
+              Use full international format without `+`. Example: `9198...`. Test messages are sent through the same live transport used for resident alerts.
             </div>
           </div>
         </CardContent>
