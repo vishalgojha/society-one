@@ -99,6 +99,24 @@ async function listAvailableModels() {
   return new Set((response.models || []).map((item) => item.name));
 }
 
+async function resolveModelRoute(task = 'default', explicitModel) {
+  const available = await listAvailableModels();
+  const preferredModel = explicitModel || MODEL_BY_TASK[task] || MODEL_BY_TASK.default;
+  const fallbackChain = [preferredModel, MODEL_BY_TASK.default, 'qwen2.5:3b', 'llama3.2:1b']
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index);
+  const selectedModel = fallbackChain.find((candidate) => available.has(candidate));
+
+  return {
+    task,
+    preferredModel,
+    selectedModel: selectedModel || null,
+    fallbackChain,
+    availableModels: [...available],
+    source: selectedModel ? 'ollama' : (OPENROUTER_API_KEY ? 'openrouter-fallback' : 'unavailable'),
+  };
+}
+
 async function invokeOllama({ model, prompt, images, schema, temperature = 0.2 }) {
   const payload = {
     model,
@@ -167,16 +185,12 @@ function tryParseJson(text) {
 }
 
 async function invokeRoutedModel({ task = 'default', prompt, response_json_schema, imageUrls, model }) {
-  const available = await listAvailableModels();
-  const preferredModel = model || MODEL_BY_TASK[task] || MODEL_BY_TASK.default;
-  const fallbackChain = [preferredModel, MODEL_BY_TASK.default, 'qwen2.5:3b', 'llama3.2:1b']
-    .filter(Boolean)
-    .filter((item, index, array) => array.indexOf(item) === index);
-  const selectedModel = fallbackChain.find((candidate) => available.has(candidate));
+  const route = await resolveModelRoute(task, model);
+  const selectedModel = route.selectedModel;
   const images = imageUrls?.length ? await Promise.all(imageUrls.map(fetchImageAsBase64)) : undefined;
 
   let raw;
-  let usedModel = selectedModel || preferredModel;
+  let usedModel = selectedModel || route.preferredModel;
 
   try {
     if (!selectedModel) throw new Error('No preferred Ollama model available');
@@ -198,6 +212,7 @@ async function invokeRoutedModel({ task = 'default', prompt, response_json_schem
     task,
     raw,
     parsed,
+    route,
   };
 }
 
@@ -333,6 +348,13 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { ok: true, ollama: OLLAMA_URL });
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/debug/model-route') {
+      const task = url.searchParams.get('task') || 'default';
+      const model = url.searchParams.get('model') || undefined;
+      sendJson(response, 200, await resolveModelRoute(task, model));
       return;
     }
 
