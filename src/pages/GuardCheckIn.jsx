@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { invokeFunction } from '@/api/functions';
 import { toast } from 'sonner';
 
 export default function GuardCheckIn() {
@@ -22,6 +23,8 @@ export default function GuardCheckIn() {
     queryKey: ['guard-properties'],
     queryFn: () => entities.Property.list('-createdAt', 50),
   });
+
+  const selectedProperty = properties.find((property) => property.id === propertyId) || null;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -48,6 +51,24 @@ export default function GuardCheckIn() {
     },
   });
 
+  const notifyResident = async () => {
+    if (!operator?.id || !selectedProperty?.residentPhone) return;
+    const [settings] = await entities.NotificationSettings.filter({ operatorId: operator.id });
+    if (!settings?.whatsappEnabled) return;
+
+    await invokeFunction('notifyPreApprovedVisitor', {
+      phone: selectedProperty.residentPhone,
+      recipientType: 'resident',
+      recipientName: selectedProperty.ownerName || selectedProperty.name || 'Resident',
+      visitorName: name,
+      visitorType: 'walk_in',
+      visitorPurpose: purpose,
+      propertyName: selectedProperty.name || selectedProperty.unitNumber,
+      flatOrRoom: selectedProperty.unitNumber,
+      isPreApproved: false,
+    }).catch(() => null);
+  };
+
   return (
     <div className="mx-auto max-w-2xl">
       <Card className="rounded-3xl border-slate-800 bg-slate-900/80">
@@ -73,7 +94,7 @@ export default function GuardCheckIn() {
             {faceFile?.name || 'Tap to add face photo'}
             <input type="file" accept="image/*" className="hidden" onChange={(event) => setFaceFile(event.target.files?.[0] || null)} />
           </label>
-          <Button onClick={() => mutation.mutate()} disabled={!name || !propertyId || mutation.isPending} className="h-14 w-full rounded-2xl bg-emerald-500 text-base text-white hover:bg-emerald-600">
+          <Button onClick={async () => { await mutation.mutateAsync(); await notifyResident(); }} disabled={!name || !propertyId || mutation.isPending} className="h-14 w-full rounded-2xl bg-emerald-500 text-base text-white hover:bg-emerald-600">
             {mutation.isPending ? 'Saving...' : 'Save entry'}
           </Button>
         </CardContent>

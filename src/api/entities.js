@@ -61,6 +61,7 @@ const tableConfigs = {
       unitNumber: 'unit_number',
       block: 'block',
       ownerName: 'owner_name',
+      residentPhone: 'resident_phone',
       createdAt: 'created_at',
       name: 'name',
       type: 'type',

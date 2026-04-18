@@ -47,6 +47,50 @@ export default function CheckIn() {
     [properties, form.propertyId]
   );
 
+  const notifyRecipients = async () => {
+    if (!operator?.id) return;
+    const [settings] = await entities.NotificationSettings.filter({ operatorId: operator.id });
+    if (!settings?.whatsappEnabled) return;
+
+    const tasks = [];
+
+    if (selectedProperty?.residentPhone) {
+      tasks.push(
+        invokeFunction('notifyPreApprovedVisitor', {
+          phone: selectedProperty.residentPhone,
+          recipientType: 'resident',
+          recipientName: selectedProperty.ownerName || selectedProperty.name || 'Resident',
+          visitorName: form.visitorName,
+          visitorType: form.visitorType,
+          visitorPurpose: form.visitorPurpose,
+          propertyName: selectedProperty.name || selectedProperty.unitNumber || form.flatOrRoom,
+          flatOrRoom: form.flatOrRoom,
+          isPreApproved: Boolean(form.verification?.isPreApproved),
+        })
+      );
+    }
+
+    if (form.verification?.isPreApproved && form.visitorMobile) {
+      tasks.push(
+        invokeFunction('notifyPreApprovedVisitor', {
+          phone: form.visitorMobile,
+          recipientType: 'visitor',
+          recipientName: form.visitorName,
+          visitorName: form.visitorName,
+          visitorType: form.visitorType,
+          visitorPurpose: form.visitorPurpose,
+          propertyName: selectedProperty?.name || selectedProperty?.unitNumber || form.flatOrRoom,
+          flatOrRoom: form.flatOrRoom,
+          isPreApproved: true,
+        })
+      );
+    }
+
+    if (tasks.length) {
+      await Promise.allSettled(tasks);
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const [facePhoto, idPhoto] = await Promise.all([
@@ -112,13 +156,8 @@ export default function CheckIn() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      if (form.verification?.isPreApproved) {
-        await invokeFunction('notifyPreApprovedVisitor', {
-          visitorName: form.visitorName,
-          propertyId: form.propertyId,
-        }).catch(() => null);
-      }
       await createMutation.mutateAsync();
+      await notifyRecipients().catch(() => null);
     } finally {
       setSubmitting(false);
     }

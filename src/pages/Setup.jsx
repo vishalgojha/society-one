@@ -15,6 +15,7 @@ export default function Setup() {
     propertyName: '',
     unitNumber: '',
     ownerName: '',
+    residentPhone: '',
   });
 
   const mutation = useMutation({
@@ -28,6 +29,7 @@ export default function Setup() {
         name: form.propertyName,
         unitNumber: form.unitNumber,
         ownerName: form.ownerName,
+        residentPhone: form.residentPhone,
       });
       if (user?.id) {
         await entities.Operator.create({
@@ -54,6 +56,7 @@ export default function Setup() {
           <Input value={form.propertyName} onChange={(event) => setForm((current) => ({ ...current, propertyName: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Primary property name" />
           <Input value={form.unitNumber} onChange={(event) => setForm((current) => ({ ...current, unitNumber: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Unit / tower" />
           <Input value={form.ownerName} onChange={(event) => setForm((current) => ({ ...current, ownerName: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Owner / resident name" />
+          <Input value={form.residentPhone} onChange={(event) => setForm((current) => ({ ...current, residentPhone: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Resident WhatsApp phone" />
           <Button onClick={() => mutation.mutate()} className="h-12 rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600">
             {mutation.isPending ? 'Creating...' : 'Create society'}
           </Button>

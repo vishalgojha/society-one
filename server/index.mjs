@@ -486,7 +486,17 @@ async function handleNotifyVisitor(body) {
 
   const result = await invokeRoutedModel({
     task: 'notification',
-    prompt: `Write a short resident notification for a pre-approved visitor named ${body.visitorName || 'visitor'}. Return strict JSON only.`,
+    prompt: [
+      'Write a short WhatsApp notification and return strict JSON only.',
+      `Recipient type: ${body.recipientType || 'resident'}`,
+      `Recipient name: ${body.recipientName || 'unknown'}`,
+      `Visitor name: ${body.visitorName || 'visitor'}`,
+      `Visitor type: ${body.visitorType || 'visitor'}`,
+      `Purpose: ${body.visitorPurpose || 'visit'}`,
+      `Property: ${body.propertyName || body.flatOrRoom || 'society entrance'}`,
+      `Pre-approved: ${body.isPreApproved ? 'yes' : 'no'}`,
+      'Keep it concise and operational.',
+    ].join('\n'),
     response_json_schema: schema,
   });
 

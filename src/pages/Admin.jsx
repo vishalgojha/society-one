@@ -12,7 +12,7 @@ export default function Admin() {
   const queryClient = useQueryClient();
   const { societyId } = useAuth();
   const [operatorForm, setOperatorForm] = useState({ name: '', phone: '', role: 'operator' });
-  const [propertyForm, setPropertyForm] = useState({ name: '', unitNumber: '', block: '', ownerName: '', type: 'society' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', unitNumber: '', block: '', ownerName: '', residentPhone: '', type: 'society' });
   const [preApprovedForm, setPreApprovedForm] = useState({ name: '', phone: '', propertyId: '', validUntil: '' });
 
   const { data } = useQuery({
@@ -40,7 +40,7 @@ export default function Admin() {
     mutationFn: () => entities.Property.create({ ...propertyForm, societyId }),
     onSuccess: () => {
       toast.success('Property created');
-      setPropertyForm({ name: '', unitNumber: '', block: '', ownerName: '', type: 'society' });
+      setPropertyForm({ name: '', unitNumber: '', block: '', ownerName: '', residentPhone: '', type: 'society' });
       queryClient.invalidateQueries({ queryKey: ['admin-console'] });
     },
   });
@@ -79,6 +79,7 @@ export default function Admin() {
             <Input value={propertyForm.unitNumber} onChange={(event) => setPropertyForm((current) => ({ ...current, unitNumber: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Unit number" />
             <Input value={propertyForm.block} onChange={(event) => setPropertyForm((current) => ({ ...current, block: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Block" />
             <Input value={propertyForm.ownerName} onChange={(event) => setPropertyForm((current) => ({ ...current, ownerName: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Owner name" />
+            <Input value={propertyForm.residentPhone} onChange={(event) => setPropertyForm((current) => ({ ...current, residentPhone: event.target.value }))} className="h-12 rounded-2xl border-slate-700 bg-slate-950 text-white" placeholder="Resident WhatsApp phone" />
             <Button onClick={() => createProperty.mutate()} className="h-12 w-full rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600">Add property</Button>
           </CardContent>
         </Card>
@@ -123,6 +124,7 @@ export default function Admin() {
               <div key={property.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
                 <p className="font-medium text-white">{property.name || property.unitNumber || 'Property'}</p>
                 <p className="text-sm text-slate-500">{property.block || property.ownerName || property.type}</p>
+                <p className="text-xs text-slate-600">{property.residentPhone || 'No resident phone'}</p>
               </div>
             ))}
           </CardContent>
