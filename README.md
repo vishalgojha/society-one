@@ -18,6 +18,7 @@ Copy `.env.example` to `.env` and set:
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_LLM_API_URL=
+VITE_AUTH_REDIRECT_URL=
 ```
 
 ## Supabase

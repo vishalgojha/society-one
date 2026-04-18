@@ -10,6 +10,17 @@ const STORAGE_KEYS = {
   propertyId: 'activePropertyId',
 };
 
+const getAuthRedirectUrl = () => {
+  const configured = import.meta.env.VITE_AUTH_REDIRECT_URL;
+  if (configured) return configured;
+
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return `${window.location.origin}/OperatorAuth`;
+  }
+
+  return 'https://societyone.live/OperatorAuth';
+};
+
 async function loadOperator(userId) {
   const { data, error } = await supabase
     .from('operators')
@@ -79,7 +90,7 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/OperatorAuth`,
+        emailRedirectTo: getAuthRedirectUrl(),
       },
     });
 
