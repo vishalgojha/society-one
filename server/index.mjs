@@ -1,6 +1,13 @@
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import makeWASocket, {
+  Browsers,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  useMultiFileAuthState,
+} from '@whiskeysockets/baileys';
+import QRCode from 'qrcode';
 
 const ENV_PATH = join(process.cwd(), '.env');
 
@@ -25,6 +32,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const OPENROUTER_URL = process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'qwen/qwen-2.5-7b-instruct';
+const WHATSAPP_AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || '.baileys-auth';
 
 const MODEL_BY_TASK = {
   default: 'qwen3:8b',
@@ -43,6 +51,17 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+const whatsappState = {
+  socket: null,
+  status: 'idle',
+  qr: null,
+  qrDataUrl: null,
+  connectedJid: null,
+  lastError: null,
+  updatedAt: null,
+  isStarting: false,
 };
 
 function sendJson(response, statusCode, payload) {
@@ -97,6 +116,152 @@ async function fetchImageAsBase64(imageUrl) {
 async function listAvailableModels() {
   const response = await fetchJson(`${OLLAMA_URL}/api/tags`);
   return new Set((response.models || []).map((item) => item.name));
+}
+
+function normalizePhoneToJid(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) throw new Error('A valid phone number is required');
+  return `${digits}@s.whatsapp.net`;
+}
+
+async function updateWhatsappQr(qr) {
+  whatsappState.qr = qr;
+  whatsappState.qrDataUrl = qr ? await QRCode.toDataURL(qr, { margin: 1, width: 280 }) : null;
+}
+
+function getWhatsappSnapshot() {
+  return {
+    status: whatsappState.status,
+    connectedJid: whatsappState.connectedJid,
+    hasQr: Boolean(whatsappState.qr),
+    qrDataUrl: whatsappState.qrDataUrl,
+    lastError: whatsappState.lastError,
+    updatedAt: whatsappState.updatedAt,
+  };
+}
+
+async function startWhatsAppBridge(forceRestart = false) {
+  if (whatsappState.isStarting) return getWhatsappSnapshot();
+  if (whatsappState.socket && !forceRestart) return getWhatsappSnapshot();
+
+  whatsappState.isStarting = true;
+  whatsappState.status = 'starting';
+  whatsappState.updatedAt = new Date().toISOString();
+  whatsappState.lastError = null;
+
+  try {
+    if (forceRestart && whatsappState.socket?.end) {
+      try {
+        whatsappState.socket.end(undefined);
+      } catch {
+        // ignore stale socket close failures
+      }
+      whatsappState.socket = null;
+    }
+
+    const authDir = join(process.cwd(), WHATSAPP_AUTH_DIR);
+    mkdirSync(authDir, { recursive: true });
+
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const socket = makeWASocket({
+      version,
+      auth: state,
+      browser: Browsers.ubuntu('SocietyOne'),
+      printQRInTerminal: false,
+      syncFullHistory: false,
+      markOnlineOnConnect: false,
+    });
+
+    whatsappState.socket = socket;
+
+    socket.ev.on('creds.update', saveCreds);
+    socket.ev.on('connection.update', async (update) => {
+      if (update.qr) {
+        whatsappState.status = 'pairing';
+        await updateWhatsappQr(update.qr);
+      }
+
+      if (update.connection === 'open') {
+        whatsappState.status = 'connected';
+        whatsappState.connectedJid = socket.user?.id || null;
+        whatsappState.lastError = null;
+        whatsappState.updatedAt = new Date().toISOString();
+        await updateWhatsappQr(null);
+      }
+
+      if (update.connection === 'close') {
+        const statusCode = update.lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect =
+          statusCode !== DisconnectReason.loggedOut &&
+          statusCode !== DisconnectReason.badSession;
+
+        whatsappState.status = shouldReconnect ? 'reconnecting' : 'disconnected';
+        whatsappState.connectedJid = null;
+        whatsappState.updatedAt = new Date().toISOString();
+        whatsappState.lastError = update.lastDisconnect?.error?.message || null;
+
+        if (shouldReconnect) {
+          setTimeout(() => {
+            startWhatsAppBridge(true).catch((error) => {
+              whatsappState.lastError = error.message;
+              whatsappState.status = 'error';
+            });
+          }, 2000);
+        } else {
+          whatsappState.socket = null;
+        }
+      }
+    });
+
+    whatsappState.updatedAt = new Date().toISOString();
+    return getWhatsappSnapshot();
+  } finally {
+    whatsappState.isStarting = false;
+  }
+}
+
+async function stopWhatsAppBridge() {
+  if (whatsappState.socket?.logout) {
+    try {
+      await whatsappState.socket.logout();
+    } catch {
+      // logout can fail if the session is already gone
+    }
+  }
+  if (whatsappState.socket?.end) {
+    try {
+      whatsappState.socket.end(undefined);
+    } catch {
+      // ignore
+    }
+  }
+
+  whatsappState.socket = null;
+  whatsappState.status = 'disconnected';
+  whatsappState.connectedJid = null;
+  whatsappState.lastError = null;
+  whatsappState.updatedAt = new Date().toISOString();
+  await updateWhatsappQr(null);
+  return getWhatsappSnapshot();
+}
+
+async function sendWhatsAppMessage({ phone, message }) {
+  if (!whatsappState.socket || whatsappState.status !== 'connected') {
+    throw new Error('WhatsApp is not connected');
+  }
+  if (!message) {
+    throw new Error('Message is required');
+  }
+
+  const jid = normalizePhoneToJid(phone);
+  const result = await whatsappState.socket.sendMessage(jid, { text: message });
+  return {
+    ok: true,
+    jid,
+    id: result?.key?.id || null,
+  };
 }
 
 async function resolveModelRoute(task = 'default', explicitModel) {
@@ -329,6 +494,13 @@ async function handleNotifyVisitor(body) {
     ok: true,
     notification: result.parsed,
     model: result.model,
+    whatsapp:
+      body.phone && whatsappState.status === 'connected'
+        ? await sendWhatsAppMessage({
+            phone: body.phone,
+            message: `${result.parsed.title}\n\n${result.parsed.message}`,
+          }).catch((error) => ({ ok: false, error: error.message }))
+        : { ok: false, error: 'WhatsApp not requested or not connected' },
   };
 }
 
@@ -355,6 +527,11 @@ const server = createServer(async (request, response) => {
       const task = url.searchParams.get('task') || 'default';
       const model = url.searchParams.get('model') || undefined;
       sendJson(response, 200, await resolveModelRoute(task, model));
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/whatsapp/status') {
+      sendJson(response, 200, getWhatsappSnapshot());
       return;
     }
 
@@ -395,6 +572,21 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (url.pathname === '/whatsapp/connect') {
+      sendJson(response, 200, await startWhatsAppBridge(body.force === true));
+      return;
+    }
+
+    if (url.pathname === '/whatsapp/disconnect') {
+      sendJson(response, 200, await stopWhatsAppBridge());
+      return;
+    }
+
+    if (url.pathname === '/whatsapp/send') {
+      sendJson(response, 200, await sendWhatsAppMessage(body));
+      return;
+    }
+
     sendJson(response, 404, { error: 'Not found' });
   } catch (error) {
     sendJson(response, 500, { error: error.message || 'Internal server error' });
@@ -403,4 +595,10 @@ const server = createServer(async (request, response) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`SocietyOne AI bridge listening on http://127.0.0.1:${PORT}`);
+});
+
+startWhatsAppBridge(false).catch((error) => {
+  whatsappState.status = 'error';
+  whatsappState.lastError = error.message;
+  whatsappState.updatedAt = new Date().toISOString();
 });

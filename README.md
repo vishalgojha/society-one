@@ -50,3 +50,7 @@ npm run build
   - `qwen2.5:3b`: structured extraction and classification
   - `qwen2.5:0.5b`: short notifications
   - `llama3.2:1b`: lightweight quick tasks / fallback
+- WhatsApp transport now uses Baileys in the same local bridge process:
+  - pairing + session status endpoints
+  - QR surfaced in Settings
+  - test message/send endpoint for resident or operator alerts
